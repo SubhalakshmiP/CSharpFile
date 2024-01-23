@@ -1,0 +1,97 @@
+using Azure;
+using System;
+using System.Text.Json;
+using Azure.Core;
+using Azure.AI.Language.Conversations;
+
+namespace ProofOfConcept
+{
+    class Program
+    {
+        private static readonly AzureKeyCredential credential = new AzureKeyCredential("[Enter Key1 Value]");
+        private static readonly Uri endpoint = new Uri("[Enter Endpoint Value]");
+        private static readonly string projectName = "lang4567";
+        private static readonly string deploymentName = "lang4567";
+
+        static void RecognizeYourText(string? query)
+        {
+            if (query == null || query.Length > 1000)
+            {
+                query = "can you send me a few gizmos?";
+            }
+
+            var data = new
+            {
+                analysisInput = new
+                {
+                    conversationItem = new
+                    {
+                        text = query,
+                        id = "1",
+                        participantId = "1",
+                    }
+                },
+                parameters = new
+                {
+                    projectName,
+                    deploymentName,
+                    stringIndexType = "Utf16CodeUnit",
+                },
+                kind = "Conversation",
+            };
+
+            // Create client and send request
+            var client = new LanguageConversationsClient(endpoint, credential);
+            Response response = client.AnalyzeConversation(RequestContent.Create(data));
+
+            if (response.ContentStream == null)
+            {
+                Console.WriteLine("No response received.");
+                return;
+            }
+
+            using JsonDocument result = JsonDocument.Parse(response.ContentStream);
+            JsonElement conversationalTaskResult = result.RootElement;
+            JsonElement conversationPrediction = conversationalTaskResult.GetProperty("result").GetProperty("prediction");
+
+            Console.WriteLine("Intents:");
+            foreach (JsonElement intent in conversationPrediction.GetProperty("intents").EnumerateArray())
+            {
+                float confidenceScore = intent.GetProperty("confidenceScore").GetSingle();
+
+                // Check if confidence score is more than 80 percent
+                if (confidenceScore > 0.8)
+                {
+                    Console.WriteLine($"Category: {intent.GetProperty("category").GetString()}");
+                    Console.WriteLine($"Confidence: {confidenceScore}");
+                    Console.WriteLine();
+                }
+            }
+
+            Console.WriteLine("Entities:");
+            foreach (JsonElement entity in conversationPrediction.GetProperty("entities").EnumerateArray())
+            {
+                Console.WriteLine($"Category: {entity.GetProperty("category").GetString()}");
+                Console.WriteLine($"Text: {entity.GetProperty("text").GetString()}");
+                Console.WriteLine($"Offset: {entity.GetProperty("offset").GetInt32()}");
+                Console.WriteLine($"Length: {entity.GetProperty("length").GetInt32()}");
+                Console.WriteLine($"Confidence: {entity.GetProperty("confidenceScore").GetSingle()}");
+                Console.WriteLine();
+            }
+        }
+
+        static void Main(string[] args)
+        {
+            string? input = null;
+            if (args.Length > 0)
+            {
+                input = System.IO.File.ReadAllText(args[0]);
+            }
+
+            RecognizeYourText(input);
+
+            Console.Write("Press any key to exit.");
+            Console.ReadKey();
+        }
+    }
+}
